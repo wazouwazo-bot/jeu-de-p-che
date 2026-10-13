@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Concours de Pêche 3D - Wassimou & Ziyad</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 100;
+        }
+
+        .score-card {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px 16px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            text-align: center;
+            min-width: 100px;
+            border: 3px solid transparent;
+        }
+
+        .score-card.p1 { border-color: #2196F3; }
+        .score-card.p2 { border-color: #FF5722; }
+
+        .score-title {
+            font-size: 12px;
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 2px;
+        }
+
+        .score-value {
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        .score-card.p1 .score-value { color: #1976D2; }
+        .score-card.p2 .score-value { color: #E64A19; }
+
+        #timer-card {
+            background: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 8px 14px;
+            border-radius: 12px;
+            text-align: center;
+            min-width: 70px;
+        }
+
+        #music-btn {
+            background: #ff9800;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            font-size: 12px;
+        }
+
+        #touch-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 35%;
+            display: flex;
+            z-index: 150;
+            pointer-events: none;
+        }
+
+        .touch-side {
+            flex: 1;
+            height: 100%;
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            transition: background 0.1s;
+        }
+
+        .touch-side:active {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .touch-label {
+            color: white;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 12px 20px;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: bold;
+            pointer-events: none;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        }
+
+        #game-over-modal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            z-index: 300;
+        }
+
+        .restart-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 28px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="ui-container">
+        <div class="score-card p1">
+            <div class="score-title">Wassimou (Bleu)</div>
+            <div class="score-value" id="score1">0</div>
+        </div>
+        <div id="timer-card">
+            <div class="score-title" style="color: #aaa;">TEMPS</div>
+            <div class="score-value" id="timer">60s</div>
+        </div>
+        <div class="score-card p2">
+            <div class="score-title">Ziyad (Orange)</div>
+            <div class="score-value" id="score2">0</div>
+        </div>
+        <button id="music-btn" onclick="toggleMusic()">🎵 Zique</button>
+    </div>
+
+    <div id="touch-controls">
+        <div class="touch-side" id="side-p1" ontouchstart="handleTouch(1, event)" onclick="checkFishing(1, p1)">
+            <div class="touch-label" style="border-bottom: 4px solid #2196F3;">Wassimou [Touche A]</div>
+        </div>
+        <div class="touch-side" id="side-p2" ontouchstart="handleTouch(2, event)" onclick="checkFishing(2, p2)">
+            <div class="touch-label" style="border-bottom: 4px solid #FF5722;">Ziyad [Touche L]</div>
+        </div>
+    </div>
+
+    <div id="game-over-modal">
+        <h2 id="winner-text">Fin de la partie !</h2>
+        <p id="final-scores"></p>
+        <button class="restart-btn" onclick="resetGame()">Recommencer</button>
+    </div>
+
+    <script>
+        let audioCtx = null;
+        let isMusicPlaying = false;
+        let musicInterval = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playNote(freq, duration, type = 'triangle', gainValue = 0.15) {
+            if (!audioCtx || !isMusicPlaying) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(gainValue, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playCatchSound() {
+            if (!audioCtx) return;
+            const notes = [523.25, 659.25, 783.99, 1046.50];
+            notes.forEach((freq, index) => {
+                setTimeout(() => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.15);
+                }, index * 60);
+            });
+        }
+
+        const melodyNotes = [
+            329.63, 392.00, 493.88, 587.33, 523.25, 493.88, 392.00, 329.63,
+            293.66, 349.23, 440.00, 523.25, 493.88, 440.00, 349.23, 293.66,
+            329.63, 392.00, 493.88, 659.25, 587.33, 493.88, 392.00, 329.63,
+            440.00, 493.88, 523.25, 587.33, 659.25, 523.25, 392.00, 0
+        ];
+
+        let noteIdx = 0;
+        function startChaplinMusic() {
+            if (musicInterval) clearInterval(musicInterval);
+            musicInterval = setInterval(() => {
+                if (!isMusicPlaying) return;
+                const freq = melodyNotes[noteIdx];
+                if (freq > 0) {
+                    playNote(freq, 0.2, 'triangle', 0.1);
+                    if (noteIdx % 2 === 0) playNote(freq / 2, 0.25, 'sawtooth', 0.04);
+                }
+                noteIdx = (noteIdx + 1) % melodyNotes.length;
+            }, 180);
+        }
+
+        function toggleMusic() {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            isMusicPlaying = !isMusicPlaying;
+            const btn = document.getElementById('music-btn');
+            if (isMusicPlaying) {
+                btn.innerText = "🔊 ON";
+                btn.style.background = "#4CAF50";
+                startChaplinMusic();
+            } else {
+                btn.innerText = "🎵 Zique";
+                btn.style.background = "#ff9800";
+                if (musicInterval) clearInterval(musicInterval);
+            }
+        }
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.FogExp2(0x87CEEB, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 12, 22);
+        camera.lookAt(0, 2, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sunLight = new THREE.DirectionalLight(0xfffaed, 0.9);
+        sunLight.position.set(20, 40, 20);
+        sunLight.castShadow = true;
+        scene.add(sunLight);
+
+        const island = new THREE.Mesh(
+            new THREE.CylinderGeometry(18, 20, 2, 32),
+            new THREE.MeshStandardMaterial({ color: 0x557a2b, roughness: 0.8 })
+        );
+        island.position.y = -1;
+        island.receiveShadow = true;
+        scene.add(island);
+
+        const lake = new THREE.Mesh(
+            new THREE.CylinderGeometry(10, 10, 1.8, 32),
+            new THREE.MeshStandardMaterial({ color: 0x1e88e5, transparent: true, opacity: 0.85 })
+        );
+        lake.position.set(0, -0.8, 0);
+        scene.add(lake);
+
+        function createPier(x, z, rotationY) {
+            const group = new THREE.Group();
+            const woodMat = new THREE.MeshStandardMaterial({ color: 0x8D6E63 });
+            for(let i = 0; i < 5; i++) {
+                const plank = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.2, 0.8), woodMat);
+                plank.position.z = i * 0.9;
+                group.add(plank);
+            }
+            group.position.set(x, 0.1, z);
+            group.rotation.y = rotationY;
+            scene.add(group);
+        }
+        createPier(-5, 5, Math.PI / 6);
+        createPier(5, 5, -Math.PI / 6);
+
+        // Fonction générique pour créer un garçon (Wassimou ou Ziyad)
+        function createBoy(shirtColor, hatColor, bucketColor) {
+            const kidGroup = new THREE.Group();
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xFFCC99 });
+            const shirtMat = new THREE.MeshStandardMaterial({ color: shirtColor });
+            const hatMat = new THREE.MeshStandardMaterial({ color: hatColor });
+
+            // Corps
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.2), shirtMat);
+            body.position.y = 1.2;
+            kidGroup.add(body);
+
+            // Tête
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), skinMat);
+            head.position.y = 2.1;
+            kidGroup.add(head);
+
+            // Casquette de garçon
+            const hat = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.35, 16), hatMat);
+            hat.position.y = 2.5;
+            kidGroup.add(hat);
+
+            // Canne à pêche
+            const rodGroup = new THREE.Group();
+            const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 4), new THREE.MeshStandardMaterial({ color: 0xD7CCC8 }));
+            rod.position.set(0, 1.8, -1.5);
+            rod.rotation.x = -Math.PI / 3;
+            rodGroup.add(rod);
+
+            const floatMesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xFF3D00 }));
+            floatMesh.position.set(0, -0.7, -3.2);
+            rodGroup.add(floatMesh);
+
+            rodGroup.position.set(0, 0.8, 0);
+            kidGroup.add(rodGroup);
+
+            // Seau à côté
+            const bucketGroup = new THREE.Group();
+            const bucketMat = new THREE.MeshStandardMaterial({ color: bucketColor, roughness: 0.4 });
+            const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.25, 0.6, 16), bucketMat);
+            bucket.position.set(1.2, 0.3, 0.5);
+            bucket.castShadow = true;
+            bucketGroup.add(bucket);
+            kidGroup.add(bucketGroup);
+
+            return { group: kidGroup, rodGroup: rodGroup, floatMesh: floatMesh, bucketGroup: bucketGroup };
+        }
+
+        // Wassimou (Joueur 1 - Bleu)
+        const p1 = createBoy(0x2196F3, 0x1976D2, 0x1565C0);
+        p1.group.position.set(-4.5, 0.4, 6.5);
+        p1.group.rotation.y = -Math.PI / 6;
+        scene.add(p1.group);
+
+        // Ziyad (Joueur 2 - Orange / Rouge)
+        const p2 = createBoy(0xFF5722, 0xE64A19, 0xD84315);
+        p2.group.position.set(4.5, 0.4, 6.5);
+        p2.group.rotation.y = Math.PI / 6;
+        scene.add(p2.group);
+
+        const fishes = [];
+        const fishColors = [0xFF9800, 0xFFEB3B, 0x00BCD4, 0x9C27B0, 0x4CAF50];
+
+        function spawnFish() {
+            const fishGroup = new THREE.Group();
+            const color = fishColors[Math.floor(Math.random() * fishColors.length)];
+            const fishMat = new THREE.MeshStandardMaterial({ color: color });
+
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), fishMat);
+            body.scale.set(1, 0.6, 2);
+            fishGroup.add(body);
+
+            const angle = Math.random() * Math.PI * 2;
+            const radius = Math.random() * 7;
+            fishGroup.position.set(Math.cos(angle) * radius, -0.6, Math.sin(angle) * radius);
+
+            scene.add(fishGroup);
+
+            fishes.push({
+                mesh: fishGroup,
+                bodyMesh: body,
+                targetX: (Math.random() - 0.5) * 14,
+                targetZ: (Math.random() - 0.5) * 14,
+                speed: 0.02 + Math.random() * 0.03
+            });
+        }
+
+        for (let i = 0; i < 8; i++) spawnFish();
+
+        let scoreP1 = 0, scoreP2 = 0, timeLeft = 60, gameActive = true;
+
+        function animateRod(playerObj) {
+            let count = 0;
+            const interval = setInterval(() => {
+                count += 0.2;
+                playerObj.rodGroup.rotation.x = Math.sin(count) * 0.4;
+                if (count >= Math.PI * 2) {
+                    clearInterval(interval);
+                    playerObj.rodGroup.rotation.x = 0;
+                }
+            }, 30);
+        }
+
+        function checkFishing(playerNum, playerObj) {
+            if (!gameActive) return;
+            initAudio();
+
+            const floatWorldPos = new THREE.Vector3();
+            playerObj.floatMesh.getWorldPosition(floatWorldPos);
+
+            let caught = false;
+
+            fishes.forEach((fish, index) => {
+                const dist = floatWorldPos.distanceTo(fish.mesh.position);
+                if (dist < 2.5 && !caught) {
+                    caught = true;
+
+                    // Le poisson devient ROUGE à la capture
+                    fish.bodyMesh.material.color.setHex(0xFF0000);
+
+                    const caughtFish = fish.mesh;
+                    fishes.splice(index, 1);
+
+                    const bucketWorldPos = new THREE.Vector3();
+                    playerObj.bucketGroup.getWorldPosition(bucketWorldPos);
+
+                    let progress = 0;
+                    const startPos = caughtFish.position.clone();
+                    
+                    const flyInterval = setInterval(() => {
+                        progress += 0.08;
+                        caughtFish.position.lerpVectors(startPos, bucketWorldPos.add(new THREE.Vector3(0, 0.5, 0)), progress);
+                        caughtFish.scale.multiplyScalar(0.92);
+
+                        if (progress >= 1) {
+                            clearInterval(flyInterval);
+                            scene.remove(caughtFish);
+                            spawnFish();
+                        }
+                    }, 25);
+
+                    if (playerNum === 1) {
+                        scoreP1++;
+                        document.getElementById('score1').innerText = scoreP1;
+                    } else {
+                        scoreP2++;
+                        document.getElementById('score2').innerText = scoreP2;
+                    }
+
+                    playCatchSound();
+                    animateRod(playerObj);
+                }
+            });
+
+            if (!caught) animateRod(playerObj);
+        }
+
+        function handleTouch(playerNum, e) {
+            e.preventDefault();
+            if (playerNum === 1) checkFishing(1, p1);
+            else checkFishing(2, p2);
+        }
+
+        // Contrôles clavier indépendants
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'a' || e.key === 'A' || e.key === 'q' || e.key === 'Q') {
+                e.preventDefault();
+                checkFishing(1, p1);
+            } 
+            else if (e.key === 'l' || e.key === 'L' || e.key === 'm' || e.key === 'M') {
+                e.preventDefault();
+                checkFishing(2, p2);
+            }
+        });
+
+        const timerInterval = setInterval(() => {
+            if (!gameActive) return;
+            timeLeft--;
+            document.getElementById('timer').innerText = timeLeft + 's';
+
+            if (timeLeft <= 0) {
+                gameActive = false;
+                clearInterval(timerInterval);
+                endGame();
+            }
+        }, 1000);
+
+        function endGame() {
+            const modal = document.getElementById('game-over-modal');
+            modal.style.display = 'block';
+            document.getElementById('final-scores').innerText = `Wassimou : ${scoreP1} poisson(s) | Ziyad : ${scoreP2} poisson(s)`;
+
+            const winnerText = document.getElementById('winner-text');
+            if (scoreP1 > scoreP2) {
+                winnerText.innerText = '🏆 Wassimou (Bleu) a gagné !';
+                winnerText.style.color = '#1976D2';
+            } else if (scoreP2 > scoreP1) {
+                winnerText.innerText = '🏆 Ziyad (Orange) a gagné !';
+                winnerText.style.color = '#E64A19';
+            } else {
+                winnerText.innerText = '🤝 Égalité parfaite !';
+            }
+        }
+
+        function resetGame() {
+            scoreP1 = 0; scoreP2 = 0; timeLeft = 60; gameActive = true;
+            document.getElementById('score1').innerText = '0';
+            document.getElementById('score2').innerText = '0';
+            document.getElementById('timer').innerText = '60s';
+            document.getElementById('game-over-modal').style.display = 'none';
+        }
+
+        let clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            lake.position.y = -0.8 + Math.sin(time * 2) * 0.03;
+
+            fishes.forEach(fish => {
+                const dx = fish.targetX - fish.mesh.position.x;
+                const dz = fish.targetZ - fish.mesh.position.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist < 0.5) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const radius = Math.random() * 8;
+                    fish.targetX = Math.cos(angle) * radius;
+                    fish.targetZ = Math.sin(angle) * radius;
+                } else {
+                    fish.mesh.position.x += (dx / dist) * fish.speed;
+                    fish.mesh.position.z += (dz / dist) * fish.speed;
+                    fish.mesh.rotation.y = Math.atan2(dx, dz);
+                }
+
+                fish.mesh.position.y = -0.6 + Math.sin(time * 5 + fish.mesh.position.x) * 0.05;
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
